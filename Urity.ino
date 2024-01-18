@@ -1,7 +1,6 @@
 #include <SPI.h>
 #include <MFRC522.h>
 #include <WiFi.h>
-#include <ESPAsyncWebServer.h>
 #include <WiFiMulti.h>
 #include <ArduinoJson.h>
 WiFiMulti wifiMulti;
@@ -44,36 +43,10 @@ void setup() {
   Serial.print(" ID:");
   Serial.println(WiFi.localIP());
 
-  servidor.addHandler(&eventos);
-
-  //Activamos la pagina web
-  servidor.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    Serial.println("Requesting index page...");
-    request->send(200, "text/html", pagina);
-  });
-
-  //Estamos al pendiente si JavaScript nos envia un JSON
-  servidor.onRequestBody( [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
-    if ((request->url() == "/data") && (request->method() == HTTP_POST)){
-      const size_t        JSON_DOC_SIZE   = 512U;
-      DynamicJsonDocument jsonDoc(JSON_DOC_SIZE);
-
-      if (DeserializationError::Ok == deserializeJson(jsonDoc, (const char*)data)){
-        //JsonObject obj = jsonDoc.as<JsonObject>()
-        //Serial.println(obj["enable"].as<String>().c_str());
-
-        rfidStatus = jsonDoc["enable"];
-        request->send(200, "application/json", "{ \"status\": 0 }");
-      }else {
-        request->send(404, "application/json", "{ \"status\": 1 }");
-      }
-    }
-  });
-
   SPI.begin();
 
   mfrc522.PCD_Init();
-  mfrc522.PCD_SoftPowerDown();
+  //mfrc522.PCD_SoftPowerDown();
 
   servidor.begin();
   Serial.println("Servidor HTTP iniciado");
