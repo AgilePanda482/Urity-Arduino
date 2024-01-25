@@ -112,27 +112,7 @@ void loop() {
       before = now;
       lecturaUID = almacenarUID(lecturaUID);
 
-      // creat JSON message for Socket.IO (event)
-      JsonDocument doc;
-      JsonArray array = doc.to<JsonArray>();
-          
-      // add evnet name
-      // Hint: socket.on('event_name', ....
-      array.add("event_name");
-
-      // add payload (parameters) for the event
-      JsonObject param1 = array.createNestedObject();
-      param1["now"] = lecturaUID;
-
-      // JSON to String (serializion)
-      String output;
-      serializeJson(doc, output);
-
-      // Send event        
-      socketIO.sendEVENT(output);
-
-      // Print JSON for debugging
-      USE_SERIAL.println(output);
+      sendMessage();
     }
   }
   lecturaUID = "";
@@ -215,17 +195,27 @@ String almacenarUID(String variableUID){
   return variableUID;
 }
 
-/*
+
 void sendMessage()
 {
   Serial.println("\n");
-  Serial.println("Se enviara un JSON a Javascript con la siguiente información: ");
+  Serial.println("Se enviara un JSON a Node.js con la siguiente información: ");
   Serial.println(lecturaUID);
-  // Declare a buffer to hold the result
-  String output;
-  DynamicJsonDocument doc(1024);
 
-  doc["rfid_tag_id"] = lecturaUID;
+  // creat JSON message for Socket.IO (event)
+  JsonDocument doc;
+  JsonArray array = doc.to<JsonArray>();
+          
+  // add event name
+  // Hint: socket.on('event_name', ....
+  array.add("event_name");
+
+  // add payload (parameters) for the event
+  JsonObject param1 = array.createNestedObject();
+  param1["UID"] = lecturaUID;
+
+  // JSON to String (serializion)
+  String output;
   serializeJson(doc, output);
 
   // Send event        
@@ -233,4 +223,4 @@ void sendMessage()
 
   // Print JSON for debugging
   USE_SERIAL.println(output);
-}*/
+}
