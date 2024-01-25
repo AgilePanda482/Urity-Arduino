@@ -1,47 +1,55 @@
+//Arduino Libraries
 #include <Arduino.h>
 #include <SPI.h>
 #include <MFRC522.h>
 
+//Wifi Libraries
 #include <WiFi.h>
 #include <WiFiMulti.h>
 #include <WiFiClientSecure.h>
-#include <ArduinoJson.h>
 
-#include <WebSocketsClient.h>
+//Web Libraries
+#include <ArduinoJson.h>
 #include <SocketIOclient.h>
 
-#ifdef DEBUG_ESP_PORT
+//Password Libraries
+#include "page.h"
+
+/*#ifdef DEBUG_ESP_PORT
 #define DEBUG_MSG(...) DEBUG_ESP_PORT( __VA_ARGS__)
 #else 
 #define DEBUG_MSG(...)
 #endif
-#define DEBUG_ESP_PORT Serial
+#define DEBUG_ESP_PORT Serial*/
 
-
+//RC522 pins 
 #define RST_PIN 27
 #define SS_PIN 5
 
+//Variables
 String lecturaUID = "";
 bool rfidStatus = false;
-unsigned long messageTimestamp = 0;
+const uint32_t TiempoEsperaWifi = 5000;
+unsigned long before = 0;
+uint64_t now;
 
+//Objects
 MFRC522 mfrc522(SS_PIN, RST_PIN);
-WiFiMulti WiFiMulti;
+WiFiMulti wifiMulti;
 WebSocketsClient webSocket;
 SocketIOclient socketIO;
 
-
-#define USE_SERIAL Serial
-
+//Functions
 void socketIOEvent(socketIOmessageType_t type, uint8_t * payload, size_t length);
 void hexdump(const void *mem, uint32_t len, uint8_t cols = 16);
 String almacenarUID(String variableUID);
 void sendMessage();
 
+//Serial mode
+#define USE_SERIAL Serial
 
 void setup() {
 	USE_SERIAL.begin(115200);
-  USE_SERIAL.print("hola//////////////////////");
 
 	//Serial.setDebugOutput(true);
 	USE_SERIAL.setDebugOutput(true);
@@ -56,58 +64,82 @@ void setup() {
 		delay(1000);
 	}
 
-  WiFiMulti.addAP("", "");
+  //Internet Conexions
+  wifiMulti.addAP(ssid_1, password_1);
+  wifiMulti.addAP(ssid_2, password_2);
+  wifiMulti.addAP(ssid_3, password_3);
 
+  WiFi.mode(WIFI_STA);
 
-	//WiFi.disconnect();
-	while(WiFiMulti.run() != WL_CONNECTED) {
-        
-    Serial.println("reconectando...");
-	}
+  Serial.print("Conectando a Wifi...");
+  
+  while (wifiMulti.run(TiempoEsperaWifi) != WL_CONNECTED) {
+    Serial.print(".");
+  }
+  Serial.println("...Conectado");
+  Serial.print("SSID:");
+  Serial.print(WiFi.SSID());
+  Serial.print(" ID:");
+  Serial.println(WiFi.localIP());
 
+  //socket ip conexion
 	socketIO.setExtraHeaders("Authorization: 1234567890");
-	socketIO.begin("192.168.100.22", 3000, "/socket.io/?EIO=4");
+	socketIO.begin("192.168.62.15", 3000, "/socket.io/?EIO=4");
 
 
 	// event handler
-	//socketIO.onEvent(webSocketEvent);
-  	socketIO.onEvent(socketIOEvent);
+  socketIO.onEvent(socketIOEvent);
 
 	// use HTTP Basic Authorization this is optional remove if not needed
 	//webSocket.setAuthorization("user", "Password");
 
 	// try ever 5000 again if connection has failed
-	//webSocket.setReconnectInterval(3000);
-
+	//webSocket.setReconnectInterval(5000);
 
   SPI.begin();
   mfrc522.PCD_Init();
 
   Serial.println("Setup iniciado correctamente");
-
 }
 
 
-void loop(){
-	//	webSocket.loop();
-	socketIO.loop();
-
-  if ( !mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial()){
-    return;
-  }
-
-  
-
+void loop() {
+  socketIO.loop();      
   uint64_t now = millis();
-  if(now - messageTimestamp > 5000) {
-    lecturaUID = almacenarUID(lecturaUID);
+
+  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()){
+    if(now - before > 3000) {
+      before = now;
+      lecturaUID = almacenarUID(lecturaUID);
+
+      // creat JSON message for Socket.IO (event)
+      JsonDocument doc;
+      JsonArray array = doc.to<JsonArray>();
+          
+      // add evnet name
+      // Hint: socket.on('event_name', ....
+      array.add("event_name");
+
+      // add payload (parameters) for the event
+      JsonObject param1 = array.createNestedObject();
+      param1["now"] = lecturaUID;
+
+      // JSON to String (serializion)
+      String output;
+      serializeJson(doc, output);
+
+      // Send event        
+      socketIO.sendEVENT(output);
+
+      // Print JSON for debugging
+      USE_SERIAL.println(output);
+    }
   }
-
-  sendMessage();
-
+  lecturaUID = "";
 }
 
-void socketIOEvent(socketIOmessageType_t type, uint8_t * payload, size_t length){
+//WebsocketIO function
+void socketIOEvent(socketIOmessageType_t type, uint8_t * payload, size_t length) {
   switch(type){
     case sIOtype_DISCONNECT:
       Serial.printf("[IOc] Disconnected!\n");
@@ -115,8 +147,7 @@ void socketIOEvent(socketIOmessageType_t type, uint8_t * payload, size_t length)
     case sIOtype_CONNECT:
       Serial.printf("[IOc] Connected to url: %s\n", payload);
       // join default namespace (no auto join in Socket.IO V3)
-      socketIO.send(sIOtype_CONNECT, "/");
-      // socketIO.send("hiiii");
+      socketIO.send(sIOtype_CONNECT, "/");       
     break;
     case sIOtype_EVENT:
       Serial.printf("[IOc] get event: %s\n", payload);
@@ -153,6 +184,7 @@ void hexdump(const void *mem, uint32_t len, uint8_t cols) {
 	USE_SERIAL.printf("\n");
 }
 
+//Read NFC card Function
 String almacenarUID(String variableUID){
   // muestra texto UID en el monitor:
   Serial.print("\n");
@@ -183,7 +215,7 @@ String almacenarUID(String variableUID){
   return variableUID;
 }
 
-
+/*
 void sendMessage()
 {
   Serial.println("\n");
@@ -201,4 +233,4 @@ void sendMessage()
 
   // Print JSON for debugging
   USE_SERIAL.println(output);
-}
+}*/
