@@ -23,19 +23,19 @@
 #define DEBUG_ESP_PORT Serial*/
 
 //RC522 pins 
-#define RST_PIN 27
-#define SS_PIN 5
-
-//Piezo Pin
-#define piezo 33
+const uint8_t RST_PIN = 27;
+const uint8_t SS_PIN = 5;
 
 //Chapa Pin
-#define chapa 13
+const uint8_t chapa = 13;
+
+//Piezo Pin
+//const uint8_t piezo = 33
 
 //Variables
 String lecturaUID = "";
 bool rfidStatus = false;
-bool chapaStatus;
+bool chapaStatus = false;
 unsigned long beforeRead = 0;
 unsigned long beforeDoor = 0;
 
@@ -55,52 +55,46 @@ SocketIOclient socketIO;
 void socketIOEvent(socketIOmessageType_t type, uint8_t * payload, size_t length);
 void hexdump(const void *mem, uint32_t len, uint8_t cols = 16);
 void readRFID();
-String almacenarUID(String variableUID);
+String almacenarUID();
 void sendMessage();
 void receiveMessege(uint8_t* payload, size_t length);
-void chapaControl(bool status);
 
 //Serial mode
 #define USE_SERIAL Serial
 
 void setup() {
-	USE_SERIAL.begin(115200);
-
-	//Serial.setDebugOutput(true);
+  USE_SERIAL.begin(115200);
 	USE_SERIAL.setDebugOutput(true);
-
-	USE_SERIAL.println();
-	USE_SERIAL.println();
-	USE_SERIAL.println();
-
-	for(uint8_t t = 4; t > 0; t--) {
-		USE_SERIAL.printf("[SETUP] BOOT WAIT %d...\n", t);
-		USE_SERIAL.flush();
-		delay(1000);
-	}
 
   //Internet Conexions
   wifiMulti.addAP(ssid_1, password_1);
   wifiMulti.addAP(ssid_2, password_2);
   wifiMulti.addAP(ssid_3, password_3);
-
   WiFi.mode(WIFI_STA);
 
   Serial.print("Conectando a Wifi...");
   
-  while (wifiMulti.run(TiempoEsperaWifi) != WL_CONNECTED) {
-    Serial.print(".");
+  int conecctionTry = 0;
+  while (wifiMulti.run(TiempoEsperaWifi) != WL_CONNECTED && conecctionTry < 10){
+    USE_SERIAL.print(".");
+    conecctionTry++;
   }
-  Serial.println("...Conectado");
-  Serial.print("SSID:");
-  Serial.print(WiFi.SSID());
-  Serial.print(" ID:");
-  Serial.println(WiFi.localIP());
 
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    USE_SERIAL.println("Conectado exitosamente");
+    USE_SERIAL.print("SSID: ");
+    USE_SERIAL.print(WiFi.SSID());
+    USE_SERIAL.print("IP: ");
+    USE_SERIAL.println(WiFi.localIP());
+  }else{
+    USE_SERIAL.println("No se pudo conectar a Wifi, verifique sus credenciales");
+    return;
+  }
+  
   //socket ip conexion
 	socketIO.setExtraHeaders("Authorization: 1234567890");
 	socketIO.begin("192.168.100.26", 3000, "/socket.io/?EIO=4");
-
 
 	// event handler
   socketIO.onEvent(socketIOEvent);
@@ -116,7 +110,7 @@ void setup() {
   SPI.begin();
   mfrc522.PCD_Init();
 
-  Serial.println("Setup iniciado correctamente");
+  USE_SERIAL.println("Setup Done");
 }
 
 void loop() {
