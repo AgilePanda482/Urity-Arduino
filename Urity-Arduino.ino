@@ -80,7 +80,7 @@ void setup() {
 	}
 
   //Internet Conexions
-  //wifiMulti.addAP(ssid_1, password_1);
+  wifiMulti.addAP(ssid_1, password_1);
   wifiMulti.addAP(ssid_2, password_2);
   wifiMulti.addAP(ssid_3, password_3);
 
@@ -99,7 +99,7 @@ void setup() {
 
   //socket ip conexion
 	socketIO.setExtraHeaders("Authorization: 1234567890");
-	socketIO.begin("192.168.100.24", 3000, "/socket.io/?EIO=4");
+	socketIO.begin("192.168.100.26", 3000, "/socket.io/?EIO=4");
 
 
 	// event handler
@@ -201,35 +201,21 @@ void readRFID() {
 }
 
 //Read NFC card Function
-String almacenarUID(String variableUID){
-  // muestra texto UID en el monitor:
-  Serial.print("\n");
-  Serial.print("UID:");
+String almacenarUID(String variableUID) {
+  Serial.println("\nUID:"); // Utiliza println para imprimir una nueva línea automáticamente
 
-  // bucle recorre de a un byte por vez el UID (Esto lo imprime al monitor)
-  for(byte i = 0; i < mfrc522.uid.size; i++){
-    //si el byte leido es menor a 0x10
-    if(mfrc522.uid.uidByte[i] < 0x10){
-      //imprime espacio en blanco y numero cero
-      Serial.print(" 0");
-      variableUID += "0";
+  for (byte i = 0; i < mfrc522.uid.size; i++) {
+    // Utiliza operador ternario para agregar '0' si es necesario
+    String hexByte = String(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "") + String(mfrc522.uid.uidByte[i], HEX);
+    hexByte.toUpperCase(); // Convierte a mayúsculas antes de agregar a variableUID
 
-    }else{
-      Serial.print(" ");
-    }
-
-    //imprime el byte del UID leido en hexadecimal
-    Serial.print(mfrc522.uid.uidByte[i], HEX);
-
-    // almacena en String el byte del UID leido
-    variableUID += String(mfrc522.uid.uidByte[i], HEX);
-
+    Serial.print(" "); // Imprime un espacio en blanco
+    Serial.print(hexByte); // Imprime el byte del UID leido en hexadecimal
+    variableUID += hexByte; // Almacena en String el byte del UID leido
   }
-  Serial.print("\t");
-  variableUID.toUpperCase();
-
-  return variableUID;
+  return variableUID; // Retorna la variableUID ya convertida a mayúsculas
 }
+
 
 void sendMessage()
 {
