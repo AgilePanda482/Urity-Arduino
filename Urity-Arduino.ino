@@ -27,10 +27,10 @@
 #define SS_PIN 5
 
 //Piezo Pin
-#define piezo 13
+#define piezo 33
 
 //Chapa Pin
-#define chapa 33
+#define chapa 13
 
 //Variables
 String lecturaUID = "";
@@ -190,9 +190,9 @@ void hexdump(const void *mem, uint32_t len, uint8_t cols) {
 
 void readRFID() {
   if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()){
-    if (now - beforeRead > intervalRFID) {
-      beforeRead = now;
-      lecturaUID = almacenarUID(lecturaUID);
+    if (millis() - beforeRead > intervalRFID){
+      beforeRead = millis();
+      lecturaUID = almacenarUID();
       sendMessage();
       lecturaUID = "";
       mfrc522.PICC_HaltA();
@@ -200,8 +200,10 @@ void readRFID() {
   }
 }
 
+
 //Read NFC card Function
-String almacenarUID(String variableUID) {
+String almacenarUID() {
+  String variableUID;
   Serial.println("\nUID:"); // Utiliza println para imprimir una nueva línea automáticamente
 
   for (byte i = 0; i < mfrc522.uid.size; i++) {
