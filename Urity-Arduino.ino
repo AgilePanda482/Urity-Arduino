@@ -35,14 +35,14 @@
 //Variables
 String lecturaUID = "";
 bool rfidStatus = false;
-uint64_t now;
+bool chapaStatus;
 unsigned long beforeRead = 0;
 unsigned long beforeDoor = 0;
-bool chapaStatus;
+
 
 //Constantes
-const uint32_t TiempoEsperaWifi = 5000;
-const int chapaTime = 4000;
+const int TiempoEsperaWifi = 5000;
+const long chapaTime = 4000000;
 const int intervalRFID = 3000;
 
 //Objects
@@ -120,22 +120,20 @@ void setup() {
 }
 
 void loop() {
-  socketIO.loop();      
-  now = millis();
+  socketIO.loop();
 
-  readRFID();
-  
-  if (chapaStatus)
-  {
+  if (chapaStatus) {
     digitalWrite(chapa, HIGH);
   }
-  
-  if(now - beforeDoor > chapaTime) {
-    beforeDoor = now;
-    
+
+  readRFID();
+
+  unsigned long currentMillis = micros();
+  if (currentMillis - beforeDoor >= chapaTime) {
     digitalWrite(chapa, LOW);
-    chapaStatus = 0;
+    chapaStatus = false;
     mfrc522.PCD_Init();
+    beforeDoor = currentMillis;
   }
 }
 
@@ -219,10 +217,8 @@ String almacenarUID() {
 }
 
 
-void sendMessage()
-{
-  Serial.println("\n");
-  Serial.println("Se enviara un JSON a Node.js con la siguiente información: ");
+void sendMessage(){
+  Serial.println("\nSe enviara un JSON a Node.js con la siguiente información: ");
   Serial.println(lecturaUID);
 
   // creat JSON message for Socket.IO (event)
@@ -245,7 +241,7 @@ void sendMessage()
   socketIO.sendEVENT(output);
 
   // Print JSON for debugging
-  USE_SERIAL.println(output);
+  Serial.println(output);
 }
 
 void receiveMessege(uint8_t* payload, size_t length){
