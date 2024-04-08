@@ -23,26 +23,26 @@
 #define DEBUG_ESP_PORT Serial*/
 
 //RC522 pins 
-#define RST_PIN 27
-#define SS_PIN 5
-
-//Piezo Pin
-#define piezo 13
+const uint8_t RST_PIN = 27;
+const uint8_t SS_PIN = 5;
 
 //Chapa Pin
-#define chapa 33
+const uint8_t chapa = 13;
+
+//Piezo Pin
+//const uint8_t piezo = 33
 
 //Variables
 String lecturaUID = "";
 bool rfidStatus = false;
-uint64_t now;
+bool chapaStatus = false;
 unsigned long beforeRead = 0;
 unsigned long beforeDoor = 0;
-bool chapaStatus;
+
 
 //Constantes
-const uint32_t TiempoEsperaWifi = 5000;
-const int chapaTime = 4000;
+const int TiempoEsperaWifi = 5000;
+const long chapaTime = 4000000;
 const int intervalRFID = 3000;
 
 //Objects
@@ -55,52 +55,46 @@ SocketIOclient socketIO;
 void socketIOEvent(socketIOmessageType_t type, uint8_t * payload, size_t length);
 void hexdump(const void *mem, uint32_t len, uint8_t cols = 16);
 void readRFID();
-String almacenarUID(String variableUID);
+String almacenarUID();
 void sendMessage();
 void receiveMessege(uint8_t* payload, size_t length);
-void chapaControl(bool status);
 
 //Serial mode
 #define USE_SERIAL Serial
 
 void setup() {
-	USE_SERIAL.begin(115200);
-
-	//Serial.setDebugOutput(true);
+  USE_SERIAL.begin(115200);
 	USE_SERIAL.setDebugOutput(true);
 
-	USE_SERIAL.println();
-	USE_SERIAL.println();
-	USE_SERIAL.println();
-
-	for(uint8_t t = 4; t > 0; t--) {
-		USE_SERIAL.printf("[SETUP] BOOT WAIT %d...\n", t);
-		USE_SERIAL.flush();
-		delay(1000);
-	}
-
   //Internet Conexions
-  //wifiMulti.addAP(ssid_1, password_1);
+  wifiMulti.addAP(ssid_1, password_1);
   wifiMulti.addAP(ssid_2, password_2);
   wifiMulti.addAP(ssid_3, password_3);
-
   WiFi.mode(WIFI_STA);
 
   Serial.print("Conectando a Wifi...");
   
-  while (wifiMulti.run(TiempoEsperaWifi) != WL_CONNECTED) {
-    Serial.print(".");
+  int conecctionTry = 0;
+  while (wifiMulti.run(TiempoEsperaWifi) != WL_CONNECTED && conecctionTry < 10){
+    USE_SERIAL.print(".");
+    conecctionTry++;
   }
-  Serial.println("...Conectado");
-  Serial.print("SSID:");
-  Serial.print(WiFi.SSID());
-  Serial.print(" ID:");
-  Serial.println(WiFi.localIP());
 
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    USE_SERIAL.println("Conectado exitosamente");
+    USE_SERIAL.print("SSID: ");
+    USE_SERIAL.print(WiFi.SSID());
+    USE_SERIAL.print("IP: ");
+    USE_SERIAL.println(WiFi.localIP());
+  }else{
+    USE_SERIAL.println("No se pudo conectar a Wifi, verifique sus credenciales");
+    return;
+  }
+  
   //socket ip conexion
 	socketIO.setExtraHeaders("Authorization: 1234567890");
-	socketIO.begin("192.168.100.24", 3000, "/socket.io/?EIO=4");
-
+	socketIO.begin("192.168.100.26", 3000, "/socket.io/?EIO=4");
 
 	// event handler
   socketIO.onEvent(socketIOEvent);
@@ -116,26 +110,24 @@ void setup() {
   SPI.begin();
   mfrc522.PCD_Init();
 
-  Serial.println("Setup iniciado correctamente");
+  USE_SERIAL.println("Setup Done");
 }
 
 void loop() {
-  socketIO.loop();      
-  now = millis();
+  socketIO.loop();
 
-  readRFID();
-  
-  if (chapaStatus)
-  {
+  if (chapaStatus) {
     digitalWrite(chapa, HIGH);
   }
-  
-  if(now - beforeDoor > chapaTime) {
-    beforeDoor = now;
-    
+
+  readRFID();
+
+  unsigned long currentMillis = micros();
+  if (currentMillis - beforeDoor >= chapaTime) {
     digitalWrite(chapa, LOW);
-    chapaStatus = 0;
+    chapaStatus = false;
     mfrc522.PCD_Init();
+    beforeDoor = currentMillis;
   }
 }
 
@@ -190,9 +182,9 @@ void hexdump(const void *mem, uint32_t len, uint8_t cols) {
 
 void readRFID() {
   if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()){
-    if (now - beforeRead > intervalRFID) {
-      beforeRead = now;
-      lecturaUID = almacenarUID(lecturaUID);
+    if (millis() - beforeRead > intervalRFID){
+      beforeRead = millis();
+      lecturaUID = almacenarUID();
       sendMessage();
       lecturaUID = "";
       mfrc522.PICC_HaltA();
@@ -200,41 +192,27 @@ void readRFID() {
   }
 }
 
+
 //Read NFC card Function
-String almacenarUID(String variableUID){
-  // muestra texto UID en el monitor:
-  Serial.print("\n");
-  Serial.print("UID:");
+String almacenarUID() {
+  String variableUID;
+  Serial.println("\nUID:"); // Utiliza println para imprimir una nueva línea automáticamente
 
-  // bucle recorre de a un byte por vez el UID (Esto lo imprime al monitor)
-  for(byte i = 0; i < mfrc522.uid.size; i++){
-    //si el byte leido es menor a 0x10
-    if(mfrc522.uid.uidByte[i] < 0x10){
-      //imprime espacio en blanco y numero cero
-      Serial.print(" 0");
-      variableUID += "0";
+  for (byte i = 0; i < mfrc522.uid.size; i++) {
+    // Utiliza operador ternario para agregar '0' si es necesario
+    String hexByte = String(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "") + String(mfrc522.uid.uidByte[i], HEX);
+    hexByte.toUpperCase(); // Convierte a mayúsculas antes de agregar a variableUID
 
-    }else{
-      Serial.print(" ");
-    }
-
-    //imprime el byte del UID leido en hexadecimal
-    Serial.print(mfrc522.uid.uidByte[i], HEX);
-
-    // almacena en String el byte del UID leido
-    variableUID += String(mfrc522.uid.uidByte[i], HEX);
-
+    Serial.print(" "); // Imprime un espacio en blanco
+    Serial.print(hexByte); // Imprime el byte del UID leido en hexadecimal
+    variableUID += hexByte; // Almacena en String el byte del UID leido
   }
-  Serial.print("\t");
-  variableUID.toUpperCase();
-
-  return variableUID;
+  return variableUID; // Retorna la variableUID ya convertida a mayúsculas
 }
 
-void sendMessage()
-{
-  Serial.println("\n");
-  Serial.println("Se enviara un JSON a Node.js con la siguiente información: ");
+
+void sendMessage(){
+  Serial.println("\nSe enviara un JSON a Node.js con la siguiente información: ");
   Serial.println(lecturaUID);
 
   // creat JSON message for Socket.IO (event)
@@ -257,7 +235,7 @@ void sendMessage()
   socketIO.sendEVENT(output);
 
   // Print JSON for debugging
-  USE_SERIAL.println(output);
+  Serial.println(output);
 }
 
 void receiveMessege(uint8_t* payload, size_t length){
