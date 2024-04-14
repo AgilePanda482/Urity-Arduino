@@ -136,7 +136,8 @@ void loop() {
 //WebsocketIO function
 void socketIOEvent(socketIOmessageType_t type, uint8_t* payload, size_t length) {
   char* eventName = (char*)payload;
-
+  JsonDocument docJsonToBack;
+  
   switch(type){
     case sIOtype_DISCONNECT:
       Serial.printf("[IOc] Disconnected!\n");
@@ -150,10 +151,12 @@ void socketIOEvent(socketIOmessageType_t type, uint8_t* payload, size_t length) 
     {
       if(strstr(eventName, "sendDatafromUID") != nullptr ) {
         bool locationStudent;
-        JsonDocument docJsonToBack;
-
         JsonDocument docJson = receiveMessage(payload, length);
         JsonObject jsonLocalizacion = docJson[1];
+
+        if(jsonLocalizacion["UID"] == 0){
+          return;
+        }
 
         chapaStatus = jsonLocalizacion["estadoInstitucional"];
         locationStudent = jsonLocalizacion["localizacionAlumno"]; 
@@ -174,10 +177,13 @@ void socketIOEvent(socketIOmessageType_t type, uint8_t* payload, size_t length) 
 
         sendMessage(docJsonToBack);
         break;
-      } else if (strcmp(eventName, "sedDatafromUID") == 0) {
-        // Lógica para el evento específico.
-      } else if (strcmp(eventName, "sedDatafromUID") == 0) {
-        // Lógica para el evento específico.
+      } else if (strstr(eventName, "verifyUID") != nullptr ) {
+        Serial.println("Si entre");
+        JsonDocument docJson = receiveMessage(payload, length);
+        JsonObject jsonVerify = docJson[1];
+
+        //true || false
+        rfidStatus = jsonVerify["verify"];
       }
     }
     break;
@@ -214,16 +220,20 @@ void hexdump(const void *mem, uint32_t len, uint8_t cols) {
 }
 
 void readRFID() {
-  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()){
+  String stringToBack = "";
+
+  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
     if (millis() - beforeRead > intervalRFID){
       beforeRead = millis();
       lecturaUID = almacenarUID();
-
+        
       JsonDocument UIDJson;
       JsonArray array = UIDJson.to<JsonArray>();
 
+      rfidStatus ? stringToBack = "verifyUIDFromArduino" : stringToBack = "readUID";
+
       //event name for socket.io       
-      array.add("readUID");
+      array.add(stringToBack);
 
       //parameters for json
       JsonObject parameters = array.createNestedObject();
@@ -232,6 +242,7 @@ void readRFID() {
       sendMessage(UIDJson);
       lecturaUID = "";
       mfrc522.PICC_HaltA();
+      stringToBack = "";
     }
   }
 }
