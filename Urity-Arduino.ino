@@ -42,7 +42,7 @@ unsigned long beforeDoor = 0;
 
 //Constantes
 const int TiempoEsperaWifi = 5000;
-const long chapaTime = 4000000;
+const long chapaTime = 5000;
 const int intervalRFID = 3000;
 
 //Objects
@@ -56,8 +56,8 @@ void socketIOEvent(socketIOmessageType_t type, uint8_t * payload, size_t length)
 void hexdump(const void *mem, uint32_t len, uint8_t cols = 16);
 void readRFID();
 String almacenarUID();
-void sendMessage();
-void receiveMessege(uint8_t* payload, size_t length);
+//void sendMessage(String dataSend, String eventName, String dataName);
+JsonDocument receiveMessage(uint8_t* payload, size_t length);
 
 //Serial mode
 #define USE_SERIAL Serial
@@ -122,8 +122,8 @@ void loop() {
 
   readRFID();
 
-  unsigned long currentMillis = micros();
-  if (currentMillis - beforeDoor >= chapaTime) {
+  unsigned long currentMillis = millis();
+  if (currentMillis - beforeDoor >= chapaTime){
     digitalWrite(chapa, LOW);
     chapaStatus = false;
     mfrc522.PCD_Init();
@@ -131,11 +131,13 @@ void loop() {
   }
 }
 
-
 /*------------FUNCTIONS---------------*/
 
 //WebsocketIO function
 void socketIOEvent(socketIOmessageType_t type, uint8_t* payload, size_t length) {
+  char* eventName = (char*)payload;
+  JsonDocument docJsonToBack;
+  
   switch(type){
     case sIOtype_DISCONNECT:
       Serial.printf("[IOc] Disconnected!\n");
@@ -146,7 +148,44 @@ void socketIOEvent(socketIOmessageType_t type, uint8_t* payload, size_t length) 
       socketIO.send(sIOtype_CONNECT, "/");       
     break;
     case sIOtype_EVENT:
-      receiveMessege(payload, length);
+    {
+      if(strstr(eventName, "sendDatafromUID") != nullptr ) {
+        bool locationStudent;
+        JsonDocument docJson = receiveMessage(payload, length);
+        JsonObject jsonLocalizacion = docJson[1];
+
+        if(jsonLocalizacion["UID"] == 0){
+          return;
+        }
+
+        chapaStatus = jsonLocalizacion["estadoInstitucional"];
+        locationStudent = jsonLocalizacion["localizacionAlumno"]; 
+
+        jsonLocalizacion["localizacionAlumno"] ? locationStudent = false : locationStudent = true;
+
+        /*-----------Prepare Json-------------*/
+
+        JsonArray array = docJsonToBack.to<JsonArray>();
+
+        //event name for socket.io       
+        array.add("changeStatus");
+
+        //parameters for json
+        JsonObject parameters = array.createNestedObject();
+        parameters["UID"] = jsonLocalizacion["UIDTarjeta"];
+        parameters["localizacionAlumno"] = locationStudent;
+
+        sendMessage(docJsonToBack);
+        break;
+      } else if (strstr(eventName, "verifyUID") != nullptr ) {
+        Serial.println("Si entre");
+        JsonDocument docJson = receiveMessage(payload, length);
+        JsonObject jsonVerify = docJson[1];
+
+        //true || false
+        rfidStatus = jsonVerify["verify"];
+      }
+    }
     break;
     case sIOtype_ACK:
       Serial.printf("[IOc] get ack: %u\n", length);
@@ -181,17 +220,32 @@ void hexdump(const void *mem, uint32_t len, uint8_t cols) {
 }
 
 void readRFID() {
-  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()){
+  String stringToBack = "";
+
+  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
     if (millis() - beforeRead > intervalRFID){
       beforeRead = millis();
       lecturaUID = almacenarUID();
-      sendMessage();
+        
+      JsonDocument UIDJson;
+      JsonArray array = UIDJson.to<JsonArray>();
+
+      rfidStatus ? stringToBack = "verifyUIDFromArduino" : stringToBack = "readUID";
+
+      //event name for socket.io       
+      array.add(stringToBack);
+
+      //parameters for json
+      JsonObject parameters = array.createNestedObject();
+      parameters["UID"] = lecturaUID;
+
+      sendMessage(UIDJson);
       lecturaUID = "";
       mfrc522.PICC_HaltA();
+      stringToBack = "";
     }
   }
 }
-
 
 //Read NFC card Function
 String almacenarUID() {
@@ -210,62 +264,49 @@ String almacenarUID() {
   return variableUID; // Retorna la variableUID ya convertida a mayúsculas
 }
 
-
-void sendMessage(){
-  Serial.println("\nSe enviara un JSON a Node.js con la siguiente información: ");
-  Serial.println(lecturaUID);
-
+void sendMessage(JsonDocument doc) {
   // creat JSON message for Socket.IO (event)
-  JsonDocument doc;
+  /*JsonDocument doc;
   JsonArray array = doc.to<JsonArray>();
           
   // add event namer
   // Hint: socket.on('event_name', ....
-  array.add("event_name");
+  array.add(eventName);
 
   // add payload (parameters) for the event
-  JsonObject param1 = array.createNestedObject();
-  param1["UID"] = lecturaUID;
+  JsonObject parameters = array.createNestedObject();
+  parameters[dataName] = dataSend;*/
 
   // JSON to String (serializion)
   String output;
   serializeJson(doc, output);
 
+  Serial.println("\nSe enviara un JSON a Node.js con la siguiente información: ");
+  Serial.println(output);
+
   // Send event        
   socketIO.sendEVENT(output);
 
   // Print JSON for debugging
-  Serial.println(output);
+  //Serial.println(output);
 }
 
-void receiveMessege(uint8_t* payload, size_t length){
+JsonDocument receiveMessage(uint8_t* payload, size_t length){
   char* sptr = NULL;
   int id = strtol((char*)payload, &sptr, 10);
-
   USE_SERIAL.printf("[IOc] get event: %s id: %d\n", payload, id);
-
   if(id){
     payload = (uint8_t *)sptr;
   }
+
 
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, payload, length);
   if(err) {
     USE_SERIAL.print(F("deserializeJson() failed: "));
     USE_SERIAL.println(err.c_str());
-    return;
+    throw std::runtime_error("Error deserializing JSON");
   }
 
-  // Acceder a los valores
-  const char* nameEvent = doc[0];  // "UID"
-  Serial.println(nameEvent);
-
-  JsonObject persona = doc[1];
-  //long Codigo = persona["Codigo"];
-  //const char* UID_persona = persona["UID"];
-  //const char* Nombre = persona["Nombre"];
-  //int Ubicacion = persona["Ubicacion"];
-  //const char* DatoAcademico = persona["DatoAcademico"];
-  //int Estatus = persona["Estatus"];
-  chapaStatus = persona["Estatus"];
+  return doc;
 }
